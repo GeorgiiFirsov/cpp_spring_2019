@@ -24,23 +24,26 @@ void make_Esieve(std::vector<bool>& sieve, int limit)
 
 int main(int argc, char* argv[])
 {
-    // делаем массив из пар аргументов
+    // проверка количества аргументов
     if (argc % 2 != 1 || argc == 1) return -1;
-    std::vector<std::pair<int, int>> args;
-    for(int i = 1; i < argc - 1; i += 2)
-        args.push_back(std::make_pair(atoi(argv[i]), atoi(argv[i+1])));
     
     // заполняем решето Эратосфена
     std::vector<bool> Esieve;
     make_Esieve(Esieve, Size);
     
+    // необходимые переменные (счётчик, состояния, границы)
+    int counter = 0;
+    int lbound = -1, rbound = -1;
+    bool state = false, finished = false;
+
     // для каждой пары аргументов выводим значение
-    for(auto& pair : args)
+    for(int_fast16_t i = 1; i < argc - 1; i += 2)
     {
-        int lbound = pair.first;
-        int rbound = pair.second;
-        int counter = 0;
-        bool state = false, finished = false;
+        lbound = atoi(argv[i]);
+        rbound = atoi(argv[i + 1]);
+        counter = 0;
+        state = false;
+        finished = false;
         for(auto& item : Data)
         {
             if(!state && item == lbound) state = true;
