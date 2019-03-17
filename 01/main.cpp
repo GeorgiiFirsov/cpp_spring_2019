@@ -53,4 +53,6 @@ int main(int argc, char* argv[])
         }
         std::cout << (finished ? counter : 0) << std::endl;
     }
+    
+    return 0;
 }
