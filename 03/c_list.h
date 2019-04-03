@@ -6,15 +6,14 @@
 class list
 {
 private: 
-    struct ListNode
-    {
-	    ListNode* next;
-	    int element;
-    };
+	struct ListNode
+	{
+		ListNode* next;
+		int element;
+	};
 
 public:
 	list() : size(0) {}
-
 	~list() { clear(); }
 
 	void clear();

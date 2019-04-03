@@ -2,9 +2,9 @@
 
 void list::clear()
 {
-    if(size == 0) return;
+	if(size == 0) return;
 	ListNode* tmp;
-   	for (size_t i = 0; i < size- 1; i++)
+	for (size_t i = 0; i < size- 1; i++)
 	{
 		tmp = first;
 		if (first->next != nullptr) first = first->next;
@@ -16,7 +16,7 @@ void list::clear()
 
 const int& list::operator[](size_t index) const
 {
-    if(index >= size) throw std::out_of_range("Invalid index");
+	if(index >= size) throw std::out_of_range("Invalid index");
 	ListNode* tmp = first;
 	for (size_t i = 0; i < index; i++) tmp = tmp->next;
 	return tmp->element;
@@ -24,7 +24,7 @@ const int& list::operator[](size_t index) const
 
 int& list::operator[](size_t index) 
 {
-    if(index >= size) throw std::out_of_range("Invalid index");
+	if(index >= size) throw std::out_of_range("Invalid index");
 	ListNode* tmp = first;
 	for (size_t i = 0; i < index; i++) tmp = tmp->next;
 	return tmp->element;
@@ -52,8 +52,7 @@ void list::push_back(const int item)
 void list::pop()
 {
 	ListNode* tmp = first;
-	for (size_t i = 0; i < size - 2; i++)
-		tmp = tmp->next;
+	for (size_t i = 0; i < size - 2; i++) tmp = tmp->next;
 	tmp->next = nullptr;
 	size--;
 }

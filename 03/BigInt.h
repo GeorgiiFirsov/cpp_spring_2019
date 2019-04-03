@@ -7,10 +7,10 @@ class BigInt
 {
 
 public:
-    BigInt() : sign(true)
-    {
-        data.push_back(0);
-    }
+	BigInt() : sign(true)
+	{
+		data.push_back(0);
+	}
 	BigInt(int64_t number);
 	BigInt(const BigInt& number);
 
