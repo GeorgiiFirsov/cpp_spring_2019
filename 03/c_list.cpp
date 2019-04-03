@@ -53,6 +53,7 @@ void list::pop()
 {
 	ListNode* tmp = first;
 	for (size_t i = 0; i < size - 2; i++) tmp = tmp->next;
+	delete tmp->next;
 	tmp->next = nullptr;
 	size--;
 }
