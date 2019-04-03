@@ -2,7 +2,7 @@
 
 BigInt::BigInt(int64_t number)	
 {	
-    if (number < 0) 
+	if (number < 0) 
 	{
 		this->sign = false;
 		number = -number;
@@ -77,7 +77,7 @@ BigInt BigInt::operator+(const BigInt& number) const
 		while (tmp.data[i] >= base)
 		{
 			tmp.data[i] = tmp.data[i] % base;
-			i += 1;
+			i++;
 			if (i == tmp.data.len()) tmp.data.push_back(1);
 		}
 		return tmp;
@@ -89,10 +89,10 @@ BigInt BigInt::operator-(const BigInt& number) const
 {
 	if (!(number.sign)) return *this + (-number);
 	else
-    {
-    	if (!(this->sign)) return -(-(*this) + number);
+	{
+		if (!(this->sign)) return -(-(*this) + number);
 		else if (*this < number) return -(number - (*this));
-    }
+	}
 	BigInt tmp = BigInt(*this);
 	for (size_t i = 0; i < tmp.data.len(); i++)
 	{
@@ -109,7 +109,7 @@ BigInt BigInt::operator-(const BigInt& number) const
 
 bool BigInt::operator==(const BigInt& number) const
 {
-    if (this->data.len() != number.data.len()) return false;
+	if (this->data.len() != number.data.len()) return false;
 	if (this->sign != number.sign) return false;
 	if (this->data.len() == 0) return true;
 	for (size_t i = 0; i < this->data.len(); i++)
@@ -129,10 +129,10 @@ bool BigInt::operator<(const BigInt& number) const
 	if (number.data.len() > this->data.len()) return sign;
 	for (long long i = number.data.len() - 1; i >= 0; i--)
 		if (number.data[i] != this->data[i])
-        {
-        	if (this->data[i] > number.data[i]) return !sign;
+		{
+			if (this->data[i] > number.data[i]) return !sign;
 			else return sign;
-        }
+		}
 	return false;
 }
 
