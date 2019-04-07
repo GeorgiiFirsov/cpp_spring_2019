@@ -15,6 +15,7 @@ class Serializer
 {
 
 public:
+    
     explicit Serializer(ostream& out) : out_(out) {}
 
     template <class T>
