@@ -32,7 +32,8 @@ void pong()
 
 int main()
 {
-	std::thread t_ping(ping); m2.lock();
+	std::thread t_ping(ping); 
+	m2.lock();
 	std::thread t_pong(pong);
 	t_ping.join();
 	t_pong.join();
