@@ -15,7 +15,7 @@ void ping()
 	for(int i = 0; i < COUNT; i++)
 	{
 		m1.lock();
-		cout << "ping" << endl;
+		cout << "ping\n";
 		m2.unlock();
 	}
 }
@@ -25,7 +25,7 @@ void pong()
 	for(int i = 0; i < COUNT; i++)
 	{
 		m2.lock();
-		cout << "pong" << endl;
+		cout << "pong\n";
 		m1.unlock();
 	}
 }
