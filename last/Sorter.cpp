@@ -1,215 +1,153 @@
-/*
- *	Usage:
- *		Sorter sorter
- *		sorter(input, output)
- *
- */
+#include "Sorter.h"
 
-#include <functional>
-#include <fstream>
-#include <string>
-#include <vector>
-
-#include <queue>
-#include <stack>
-#include <condition_variable>
-#include <thread>
-#include <mutex>
-
-class Sorter final
+void Sorter::split(uint64_t* const buf, const int id)
 {
-public:
-	Sorter(size_t working_memory_size = 4 * 1024 * 1024
-	       , size_t nThreads = std::thread::hardware_concurrency())	
-		: parts_count_(nThreads)
-		, part_size_(working_memory_size / (nThreads + 1) / sizeof(uint64_t))
-		, total_parts_(0)
+	int file = 0;
+	while (input.good()) 
 	{
-		parts_ = split(parts_count_, part_size_);
-	}
-
-	Sorter(const Sorter&) = delete;
-	Sorter& operator=(const Sorter&) = delete;
-
-	void operator()(const std::string& infname, const std::string& outfname)
-	{
-		/* preparing */
-		total_parts_ = 0;
-		while (!free_parts_.empty()) {
-			free_parts_.pop();
-		}
-		for (size_t i = 0, size = parts_count_; i < size; ++i) {
-			free_parts_.push(i);
-		}
-		file_buf_.resize(part_size_);
-
-		/* opening source */
-		std::ifstream source(infname, std::ios::binary);
-		if (!source) {
-			throw std::runtime_error("can't open '" + infname + "'");
-		}
-
-		/* reading */
-		while (!source.eof())
 		{
-			if (!source.read(reinterpret_cast<char*>(file_buf_.data())
-					 , file_buf_.size() * sizeof(uint64_t)))
+			std::unique_lock<std::mutex> lock(streamReadMutex);
+			input.read(reinterpret_cast<char*>(buf), memoryPerThread);
+			lock.unlock();
+		}
+
+		auto readAmount = input.gcount() / sizeof(uint64_t);
+
+		if (readAmount)
+		{
+			std::sort(buf, buf + readAmount);
+			std::string outputFileName = std::to_string(0) + '-' + std::to_string(id) + '-' + std::to_string(file);
+			std::ofstream outputStream(outputFileName, std::ios::binary | std::ios::out);
+			outputStream.write(reinterpret_cast<char*>(buf), readAmount * sizeof(uint64_t));
+
+			outputFiles.push(outputFileName);
+
+			file++;
+		}
+	}
+}
+
+void Sorter::merge(const std::string & fileName1
+				   , const std::string & fileName2
+				   , uint64_t * const buffer
+				   , const int id
+				   , const int iter
+				   , const int file)
+{
+	std::ifstream file1(fileName1, std::ios::binary | std::ios::in);
+	std::ifstream file2(fileName2, std::ios::binary | std::ios::in);
+
+	const auto name = std::to_string(iter) + '-' + std::to_string(id) + '-' + std::to_string(file);
+
+	std::ofstream out(name, std::ios::binary | std::ios::out);
+
+	const auto limit = (memoryPerThread / sizeof(uint64_t) / 4), limitM = 2 * limit;
+
+	uint64_t* const bufL = buffer;
+	uint64_t* const bufR = (buffer + limit);
+	uint64_t* const bufM = (buffer + limitM);
+
+	file1.read(reinterpret_cast<char*>(bufL), static_cast<uint64_t>(limit) * sizeof(uint64_t));
+	auto readL = file1.gcount() / sizeof(uint64_t);
+
+	file2.read(reinterpret_cast<char*>(bufR), static_cast<uint64_t>(limit) * sizeof(uint64_t));
+	auto readR = file2.gcount() / sizeof(uint64_t);
+
+	auto left = 0, middle = 0, right = 0;
+
+	for (;  file1.good() || file2.good() || left < readL || right < readR; middle++)
+	{
+		if (left == readL && file1.good()) 
+		{
+			file1.read(reinterpret_cast<char*>(bufL), static_cast<uint64_t>(limit) * sizeof(uint64_t));
+			readL = file1.gcount() / sizeof(uint64_t);
+			left = 0;
+		}
+		if (right == readR && file2.good()) 
+		{
+			file2.read(reinterpret_cast<char*>(bufR), static_cast<uint64_t>(limit) * sizeof(uint64_t));
+			readR = file2.gcount() / sizeof(uint64_t);
+			right = 0;
+		}
+		if (middle == limitM) 
+		{
+			out.write(reinterpret_cast<char*>(bufM), static_cast<uint64_t>(middle) * sizeof(uint64_t));
+			middle = 0;
+		}
+		if (left < readL && right < readR) 
+		{
+			if (bufR[right] < bufL[left]) 
 			{
-				if (!source.eof()) {
-					throw std::runtime_error("can't read '" + infname + "'");
-				}
+				bufM[middle] = bufR[right];
+				right++;
 			}
-
-			size_t bytes_read = static_cast<size_t>(source.gcount());
-			file_buf_.resize(bytes_read / sizeof(uint64_t));
-
-			std::unique_lock<std::mutex> lock(mutex_);
-			while (free_parts_.empty()) {
-				part_processed_.wait(lock);
-			}
-
-			const size_t part_index = free_parts_.top();
-			free_parts_.pop();
-
-			parts_[part_index].swap(file_buf_);
-			file_buf_.resize(part_size_);
-
-			/* starting thread */
-			std::thread thread(std::bind(&Sorter::sortAndSave
-						     , this, getSortedFname(total_parts_)
-						     , part_index));
-			thread.detach();
-
-			total_parts_++;
-		}
-
-		/* waiting completeness*/
-		std::unique_lock<std::mutex> lock(mutex_);
-		while (free_parts_.size() < parts_count_)
-			part_processed_.wait(lock);
-
-		std::ofstream dest_(outfname, std::ios::binary);
-		if (!dest_) {
-			throw std::runtime_error("can't open '" + outfname + "'");
-		}
-
-		mergeAndSave(dest_);
-
-		/* erase temp files */
-		for (int i = 0; i < total_parts_; ++i) {
-			std::remove(getSortedFname(i).c_str());
-		}
-	}
-
-private:
-
-	void mergeAndSave(std::ofstream& dest_) const
-	{
-		std::vector<std::ifstream> sortedFiles;
-		for (int i = 0; i < total_parts_; ++i)
-		{
-			sortedFiles.emplace_back(getSortedFname(i), std::ios::binary);
-			if (!sortedFiles.back()) {
-				throw std::runtime_error("can't open temporary file");
-			}
-		}
-
-		auto gt = [](const std::pair<uint64_t, size_t> & x, const std::pair<uint64_t, size_t> & y) {
-			return x.first > y.first;
-		};
-
-		std::priority_queue<std::pair<uint64_t, size_t>
-				    , std::vector<std::pair<uint64_t, size_t>>
-				    , decltype(gt)> fqueue(gt);
-
-		for (size_t i = 0, size = sortedFiles.size(); i < size; ++i)
-		{
-			uint64_t value = getNum(sortedFiles[i]);
-			fqueue.push(std::make_pair(value, i));
-		}
-
-		while (!fqueue.empty())
-		{
-			const auto minFilePair = fqueue.top();
-			fqueue.pop();
-
-			const auto min = minFilePair.first;
-			const auto file_index = minFilePair.second;
-			auto& file = sortedFiles[file_index];
-
-			while (true)
+			else 
 			{
-				flushNum(dest_, min);
-				uint64_t value = getNum(file);
-				if (file.eof()) {
-					break;
-				}
-				if (value != min)
-				{
-					fqueue.push(std::make_pair(value, file_index));
-					break;
-				}
+				bufM[middle] = bufL[left];
+				left++;
 			}
 		}
-	}
-
-	uint64_t getNum(std::ifstream& file) const
-	{
-		uint64_t res;
-		if (!file.read(reinterpret_cast<char*>(&res), sizeof(uint64_t)))
+		else if (left == readL && right < readR) 
 		{
-			if (!file.eof()) {
-				throw std::runtime_error("Unable to read temporary file");
-			}
+			bufM[middle] = bufR[right];
+			right++;
 		}
-		return res;
-	}
-
-	void flushNum(std::ofstream& file, uint64_t value) const
-	{
-		if (!file.write(reinterpret_cast<const char*>(&value), sizeof(uint64_t))) {
-			throw std::runtime_error("unable to write target file");
-		}
-	}
-
-	std::vector<std::vector<uint64_t>> split(size_t count, size_t size) const
-	{
-		std::vector<std::vector<uint64_t>> parts;
-
-		for (size_t i = 0; i < count; ++i)
+		else if (right == readR && left < readL) 
 		{
-			std::vector<uint64_t> new_part;
-			new_part.resize(size);
-			parts.push_back(std::move(new_part));
+			bufM[middle] = bufL[left];
+			left++;
 		}
-
-		return parts;
 	}
 
-	std::string getSortedFname(int n) const
+	out.write(reinterpret_cast<char*>(bufM), static_cast<uint64_t>(middle) * sizeof(uint64_t));
+
+	std::unique_lock<std::mutex> queueLock(queueMutex);
+	outputFiles.push(name);
+	queueLock.unlock();
+}
+
+void Sorter::SortInThreads(const int id, std::string& res) 
+{
+	uint64_t* const buf = buffer.data() + id * memoryPerThread / sizeof(uint64_t);
+
+	split(buf, id);
+
 	{
-		return "sorted_" + std::to_string(n) + ".tmp";
+		std::unique_lock<std::mutex> lock(iterationFinishMutex);
+		finishedStep++;
+		condition.notify_all();
+		while (finishedStep < nThreads){
+			condition.wait(lock);
+		}
+		lock.unlock();
 	}
 
-	void sortAndSave(const std::string & file_name, size_t part_index)
+	for (auto file = 0; outputFiles.size() > 1; file++) 
 	{
-		auto& part = parts_[part_index];
-		std::sort(std::begin(part), std::end(part));
-		std::ofstream sorted(file_name, std::ios::binary);
-		std::unique_lock<std::mutex> lock(mutex_);
-		free_parts_.push(part_index);
-		part_processed_.notify_one();
-	};
+		std::unique_lock<std::mutex> queueLock(queueMutex);
 
-	const size_t parts_count_;
-	const size_t part_size_;
-	int total_parts_;
+		auto tmp1 = outputFiles.front();
+		outputFiles.pop();
+		auto tmp2 = outputFiles.front();
+		outputFiles.pop();
 
-	std::vector<std::vector<uint64_t>> parts_;
-	std::stack<size_t> free_parts_;
+		queueLock.unlock();
 
-	std::vector<uint64_t> file_buf_;
+		merge(tmp1, tmp2, buf, id, 1, file);
 
-	std::mutex mutex_;
-	std::condition_variable part_processed_;
-};
+		std::remove(tmp1.c_str());
+		std::remove(tmp2.c_str());
+	}
+
+	std::unique_lock<std::mutex> fLock(sortDoneMutex);
+	finishedSort++;
+	if (finishedSort == nThreads) 
+	{
+		if (outputFiles.empty()) {
+			throw std::runtime_error("No output files");
+		}
+		else {
+			res = outputFiles.front();
+		}
+	}
+}
